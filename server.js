@@ -29,10 +29,15 @@ app.get('/', (req, res) => {
 app.get('/location', handleLocation);
 
 //Weather route:
-app.get('/weather', handleWeather)
+app.get('/weather', handleWeather);
+
+//park
+app.get('/parks', handleParks);
 
 // Error
 app.use('*', notFoundHandler);
+
+
 
 
 // Location callback
@@ -55,7 +60,7 @@ function handleLocation(req, res) {
                 console.log(locations[url]);
                 res.send(locationInfo);
             })
-            .catch((err) => errorHandler(err, request, response));
+            .catch((err) => errorHandler(err, req, res));
     }
 }
 
@@ -90,10 +95,34 @@ function handleWeather(req, res) {
 }
 
 
+function handleParks(req, res) {
+    let city = req.query.city;
+    const key = process.env.PARKS_API_KEY;
+    const url = `https://developer.nps.gov/api/v1/parks?parkCode=${city}&api_key=${key}`;
+
+    superagent.get(url)
+        .then(allAboutPark => {
+            const parkArr = allAboutPark.body.data.map((littlepark) => {
+                return new Park(littlepark)
+            })
+            res.status(200).send(parkArr);
+        })
+        .catch((err) => errorHandler(err, req, res));
+}
+
 //weather constructor:
 function Weather(weather) {
     this.forecast = weather.weather.description;
     this.time = new Date(weather.valid_date).toDateString();
+}
+
+
+function Park(littlepark) {
+    this.name = littlepark.fullName;
+    this.address = Object.values(littlepark.addresses[0].join(' '));
+    this.fee = littlepark.entranceFees.cost;
+    this.description = littlepark.description;
+    this.url = littlepark.url;
 }
 
 
