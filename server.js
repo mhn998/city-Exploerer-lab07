@@ -39,7 +39,7 @@ app.use('*', notFoundHandler);
 function handleLocation(req, res) {
 
     let city = req.query.city;
-    let key = process.env.GEOCODE_API_KEY;
+    const key = process.env.GEOCODE_API_KEY;
     const url = `https://us1.locationiq.com/v1/search.php?key=${key}&q=${city}&format=json&limit=1`;
 
     if (locations[url]) {
@@ -48,17 +48,18 @@ function handleLocation(req, res) {
     } else {
         superagent.get(url)
             .then(data => {
-                console.log(data);
+                // console.log(data);
                 const geoData = data.body[0];
                 const locationInfo = new Location(city, geoData);
                 locations[url] = locationInfo;
+                console.log(locations[url]);
                 res.send(locationInfo);
             })
             .catch((err) => errorHandler(err, request, response));
     }
-
-
 }
+
+
 
 //location constructor:
 function Location(city, geoData) {
@@ -71,19 +72,23 @@ function Location(city, geoData) {
 
 // weather calllback
 function handleWeather(req, res) {
-    try {
-        const weather = require('./data/weather.json');
-        const weatherRender = [];
-        weather.data.map(day => {
-            weatherRender.push(new Weather(day));
+    let city = req.query.city
+    const key = process.env.WEATHER_API_KEY;
+    const url = `https://api.weatherbit.io/v2.0/forecast/daily?city=${city}&key=${key}`
 
+
+    superagent.get(url)
+        .then((weatherData) => {
+            // console.log(weatherData);
+            const EachDayArr = weatherData.body.data.map((day) => {
+                return new Weather(day);
+            });
+            res.status(200).json(EachDayArr);
         })
-        res.status(200).json(weatherRender);
+        .catch((err) => errorHandler(err, req, res));
 
-    } catch (error) {
-        errorHandler(error, request, response);
-    }
-};
+}
+
 
 //weather constructor:
 function Weather(weather) {
