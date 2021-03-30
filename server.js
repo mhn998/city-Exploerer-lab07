@@ -18,12 +18,15 @@ app.use(cors()); //will respond to any request and allow access to our api from 
  req=> All information about the request the server received
  res=> methods which can be called to create and send a response to the client
  */
-
+ 
 // API Routes:
 app.get('/', (req, res) => {
-    res.status(200).send('Ok!');
+    res.status(200).send('<h1 style="color:green; font-size:20px">HOME PAGE');
     console.log(req.query);
 });
+
+
+
 
 //Location route:
 app.get('/location', handleLocation);
@@ -36,6 +39,7 @@ app.get('/parks', handleParks);
 
 // Error
 app.use('*', notFoundHandler);
+
 
 
 
@@ -77,15 +81,15 @@ function Location(city, geoData) {
 
 // weather calllback
 function handleWeather(req, res) {
-    let city = req.query.city
+    let city = req.query.search_query
     const key = process.env.WEATHER_API_KEY;
     const url = `https://api.weatherbit.io/v2.0/forecast/daily?city=${city}&key=${key}`
 
 
     superagent.get(url)
-        .then((weatherData) => {
+        .then(weatherData => {
             // console.log(weatherData);
-            const EachDayArr = weatherData.body.data.map((day) => {
+            const EachDayArr = weatherData.body.data.map(day => {
                 return new Weather(day);
             });
             res.status(200).json(EachDayArr);
@@ -96,18 +100,21 @@ function handleWeather(req, res) {
 
 
 function handleParks(req, res) {
-    let city = req.query.city;
+    let city = req.query.search_query;
     const key = process.env.PARKS_API_KEY;
-    const url = `https://developer.nps.gov/api/v1/parks?parkCode=${city}&api_key=${key}`;
+    const url = `https://developer.nps.gov/api/v1/parks?q=${city}&api_key=${key}`;
 
     superagent.get(url)
-        .then(allAboutPark => {
-            const parkArr = allAboutPark.body.data.map((littlepark) => {
-                return new Park(littlepark)
-            })
-            res.status(200).send(parkArr);
+    .then(allParks => {
+        const aboutPark =allParks.body.data.map(littleAboutPark => {
+            // console.log(littleAboutPark.description)
+            return new Park (littleAboutPark.fullName, littleAboutPark.addresses[0].line1 + littleAboutPark.addresses[0].city,littleAboutPark.entranceFees[0].cost,littleAboutPark.description, littleAboutPark.url);
         })
-        .catch((err) => errorHandler(err, req, res));
+        res.status(200).send(aboutPark)
+    })
+    .catch(err => errorHandler(err,req,res))
+
+
 }
 
 //weather constructor:
@@ -117,12 +124,12 @@ function Weather(weather) {
 }
 
 
-function Park(littlepark) {
-    this.name = littlepark.fullName;
-    this.address = Object.values(littlepark.addresses[0].join(' '));
-    this.fee = littlepark.entranceFees.cost;
-    this.description = littlepark.description;
-    this.url = littlepark.url;
+function Park(name,address,fee,description,url) {
+    this.name = name;
+    this.address = address;
+    this.fee = fee;
+    this.description = description;
+    this.url = url;
 }
 
 
