@@ -2,31 +2,38 @@
 // Load Environment Variables from the .env file
 require('dotenv').config();
 
-// Load the express module into our script
+// Load the express modules into our script
 const express = require('express');
+const pg = require('pg');
 const superagent = require('superagent')
 const cors = require('cors');
-const locations = {};
-
 
 // App Setup:
 const app = express(); //creating the server application
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000; // creating port
+const DATABASE_URL = process.env.DATABASE_URL;
+const NODE_ENV = process.env.NODE_ENV;
+
+// Setup our connection options based on environment
+const options = NODE_ENV === 'production' ? { connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false } } : { connectionString: DATABASE_URL };
+
+const client = new pg.Client(options); // initiate pg DATABASE with specified url;
+
+
 app.use(cors()); //will respond to any request and allow access to our api from another domain
 
 /*
  req=> All information about the request the server received
  res=> methods which can be called to create and send a response to the client
  */
- 
+
 // API Routes:
+
+// Main route
 app.get('/', (req, res) => {
     res.status(200).send('<h1 style="color:green; font-size:20px">HOME PAGE');
     console.log(req.query);
 });
-
-
-
 
 //Location route:
 app.get('/location', handleLocation);
@@ -34,10 +41,10 @@ app.get('/location', handleLocation);
 //Weather route:
 app.get('/weather', handleWeather);
 
-//park
+//park route
 app.get('/parks', handleParks);
 
-// Error
+// Error 
 app.use('*', notFoundHandler);
 
 
@@ -45,27 +52,39 @@ app.use('*', notFoundHandler);
 
 
 // Location callback
-function handleLocation(req, res) {
+const locations = {};
 
+function handleLocation(req, res) {
+    //select data from DB (if existed)
     let city = req.query.city;
+    const SQL = 'SELECT * FROM location WHERE search_query = $1';
+    const values = [city];
     const key = process.env.GEOCODE_API_KEY;
     const url = `https://us1.locationiq.com/v1/search.php?key=${key}&q=${city}&format=json&limit=1`;
 
-    if (locations[url]) {
-        // send the data we currently have
-        res.send(locations[url]);
-    } else {
-        superagent.get(url)
-            .then(data => {
-                // console.log(data);
-                const geoData = data.body[0];
-                const locationInfo = new Location(city, geoData);
-                locations[url] = locationInfo;
-                console.log(locations[url]);
-                res.send(locationInfo);
-            })
-            .catch((err) => errorHandler(err, req, res));
-    }
+    client.query(SQL, values).then((results) => {
+            if (results.rows.length > 0) {
+                console.log(results.rows)
+                res.status(200).json(results.rows[0]);
+            } else {
+                superagent.get(url)
+                    .then(data => {
+                        // console.log(data);
+                        const geoData = data.body[0];
+                        const locationInfo = new Location(city, geoData);
+                        const SQL = 'INSERT INTO location(search_query,formatted_query,latitude,longitude) VALUES ($1,$2,$3,$4) RETURNING *';
+                        // locations[url] = locationInfo;
+                        // console.log(locations[url]);
+                        const savedValues = [locationInfo.search_query, locationInfo.formatted_query, locationInfo.latitude, locationInfo.longitude];
+                        client.query(SQL, savedValues).then((results) => {
+                            console.log(results);
+                            res.status(200).json(results.rows[0]);
+                        });
+                    })
+
+            }
+        })
+        .catch((err) => errorHandler(err, req, res));
 }
 
 
@@ -105,14 +124,14 @@ function handleParks(req, res) {
     const url = `https://developer.nps.gov/api/v1/parks?q=${city}&api_key=${key}`;
 
     superagent.get(url)
-    .then(allParks => {
-        const aboutPark =allParks.body.data.map(littleAboutPark => {
-            // console.log(littleAboutPark.description)
-            return new Park (littleAboutPark.fullName, littleAboutPark.addresses[0].line1 + littleAboutPark.addresses[0].city,littleAboutPark.entranceFees[0].cost,littleAboutPark.description, littleAboutPark.url);
+        .then(allParks => {
+            const aboutPark = allParks.body.data.map(littleAboutPark => {
+                // console.log(littleAboutPark.description)
+                return new Park(littleAboutPark.fullName, littleAboutPark.addresses[0].line1 + littleAboutPark.addresses[0].city, littleAboutPark.entranceFees[0].cost, littleAboutPark.description, littleAboutPark.url);
+            })
+            res.status(200).send(aboutPark)
         })
-        res.status(200).send(aboutPark)
-    })
-    .catch(err => errorHandler(err,req,res))
+        .catch(err => errorHandler(err, req, res))
 
 
 }
@@ -124,7 +143,7 @@ function Weather(weather) {
 }
 
 
-function Park(name,address,fee,description,url) {
+function Park(name, address, fee, description, url) {
     this.name = name;
     this.address = address;
     this.fee = fee;
@@ -141,6 +160,7 @@ function notFoundHandler(req, res) {
     res.status(404).send('HUH ?NOT FOUND!');
 }
 
-app.listen(PORT, () => {
-    console.log(`Server is listening on port ${PORT}`);
+client.connect().then(() => {
+    console.log(" postgress DB connected & is ready to serve you");
+    app.listen(PORT, () => console.log(`App is running on ${PORT}`));
 });
